@@ -52,6 +52,7 @@ a{color:var(--me)}
     <input id="op" type="range" min="20" max="100" value="85" data-tip="調整官網導覽圖的透明度，往左變透明可以看到底下的街道。">
     <button id="btnFac" class="on" data-tip="顯示或隱藏廁所、餐飲、哺乳室等設施圖示。">🚻 設施</button>
     <button id="btnZoo" data-tip="地圖縮放回整個動物園範圍。">看全園</button>
+    <button id="btnPlain" data-tip="全螢幕顯示官網原版遊園地圖（不旋轉、不疊在街道圖上），兩指可放大縮小，按右上角 ✕ 回到原本的地圖。">🖼 只看官網導覽圖</button>
   </div>
   <p id="gps" data-tip="定位狀態。">還沒開啟定位。按「開啟我的定位」，手機會問要不要允許，選允許。</p>
 
@@ -261,6 +262,26 @@ document.addEventListener('mouseover',e=>{const el=e.target.closest('[data-tip]'
 document.addEventListener('focusin',e=>{const el=e.target.closest('[data-tip]');el&&showTip(el);});
 document.addEventListener('click',e=>{const el=e.target.closest('[data-tip]');if(el){showTip(el);clearTimeout(window._tt);window._tt=setTimeout(hideTip,3500);}else hideTip();},true);
 document.addEventListener('touchstart',e=>{if(!e.target.closest('[data-tip]'))hideTip();},{passive:true});
+</script>
+<div id="plainWrap" style="display:none;position:fixed;inset:0;z-index:5000;background:#fff">
+  <div id="plainMap" style="position:absolute;inset:0"></div>
+  <button id="plainClose" data-tip="關閉官網導覽圖，回到真實地圖。" style="position:absolute;top:calc(10px + env(safe-area-inset-top));right:10px;z-index:5001;font-size:22px;width:48px;height:48px;border-radius:24px;border:none;background:#222;color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.3)">✕</button>
+</div>
+<script>
+(function(){
+  let pm=null;
+  const W=2482,H=3509;
+  btnPlain.onclick=function(){
+    plainWrap.style.display='block';
+    if(!pm){
+      pm=L.map('plainMap',{crs:L.CRS.Simple,minZoom:-3,maxZoom:2,zoomSnap:0.25,attributionControl:false,rotate:false,rotateControl:false});
+      const b=[[0,0],[H,W]];
+      L.imageOverlay('guide_original.jpg',b).addTo(pm);
+      pm.fitBounds(b); pm.setMaxBounds([[-H*0.2,-W*0.2],[H*1.2,W*1.2]]);
+    } else { pm.invalidateSize(); }
+  };
+  plainClose.onclick=function(){plainWrap.style.display='none';};
+})();
 </script>
 </body>
 </html>
