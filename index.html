@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>臺北市立動物園親子地圖</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+:root{--bg:#f6f4ef;--fg:#1f2a24;--muted:#5d6b62;--card:#fff;--line:#d9d4c8;--accent:#c2410c;--me:#2563eb;--ok:#15803d}
+@media (prefers-color-scheme:dark){:root{--bg:#141815;--fg:#e8ece6;--muted:#9fb0a4;--card:#1d231f;--line:#334036;--accent:#fb923c;color-scheme:dark}}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font:15px/1.5 "Noto Sans TC",system-ui,-apple-system,"PingFang TC",sans-serif;display:flex;flex-direction:column}
+#map{flex:1 1 55%;min-height:300px}
+#panel{flex:1 1 45%;overflow:auto;padding:12px 16px calc(16px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--line)}
+h1{font-size:18px;margin:0 0 4px}h2{font-size:15px;margin:14px 0 6px}
+.sub{color:var(--muted);font-size:13px;margin:0 0 10px}
+.bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+button{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:999px;padding:6px 12px;cursor:pointer}
+button.on{background:var(--me);border-color:var(--me);color:#fff}
+#gps{font-size:13px;color:var(--muted);margin:0 0 10px}
+ol,ul{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+#plan li{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:grid;grid-template-columns:52px 1fr;gap:4px 10px;cursor:pointer}
+#plan li .t{font-weight:700;font-variant-numeric:tabular-nums}#plan li .n{font-weight:700}
+#plan li .d,#plan li .w{grid-column:2;font-size:13px}#plan li .d{color:var(--muted)}#plan li .w{color:var(--accent)}
+#plan li.warn .d{color:var(--accent)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 12px;font-size:14px}
+.card b.bad{color:var(--accent)}.card b.good{color:var(--ok)}
+.note{font-size:12px;color:var(--muted);margin-top:12px}
+.pin{width:26px;height:26px;border-radius:50%;color:#fff;font:700 13px/26px system-ui;text-align:center;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);background:#c2410c}
+.fac{font-size:16px;line-height:20px;text-align:center;text-shadow:0 0 3px #fff,0 0 3px #fff}
+#q{width:100%;box-sizing:border-box;font:inherit;font-size:16px;padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--fg)}
+#res{margin:6px 0 0;gap:4px}
+#res li{display:flex;justify-content:space-between;gap:10px;padding:8px 12px;border-radius:8px;background:var(--card);border:1px solid var(--line);cursor:pointer}
+#res li .c{color:var(--muted);font-size:13px;text-align:right}
+#res .none{color:var(--muted);font-size:13px;cursor:default}
+.hit{width:30px;height:30px;border-radius:50%;background:#2563eb;color:#fff;font:700 15px/30px system-ui;text-align:center;border:3px solid #fff;box-shadow:0 0 0 3px #2563eb}
+.tip{position:fixed;z-index:99999;max-width:260px;background:#111;color:#fff;font-size:13px;line-height:1.4;padding:7px 10px;border-radius:8px;pointer-events:none;display:none;box-shadow:0 2px 8px rgba(0,0,0,.4)}
+input[type=range]{vertical-align:middle;width:90px}
+a{color:var(--me)}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="panel">
+  <h1>臺北市立動物園親子地圖</h1>
+  <p class="sub">帶 2 歲小孩・推車友善。底圖可切換：OSM 街道＋官網導覽圖（已對位到真實座標，誤差約 30–70 公尺）。步行時間以推嬰兒車速度估算（每分鐘約 50 公尺，路線比直線多算 40%）。點任何標示或文字都會出現說明。</p>
+  <div class="bar">
+    <button id="btnGps" data-tip="開啟手機定位，地圖上會出現藍點，每個地點會顯示從你這裡走過去要多久。需要允許瀏覽器使用位置。">📍 開啟我的定位</button>
+    <button id="btnFollow" data-tip="開啟後地圖會跟著你的藍點移動。">跟著我移動</button>
+    <button id="btnMap" class="on" data-tip="顯示或隱藏官網遊園導覽圖（疊在街道地圖上）。對位是用 12 個館舍控制點估算，離真實位置可能差 30–70 公尺，要走路請以現場指標為準。">🗺️ 官網導覽圖</button>
+    <input id="op" type="range" min="20" max="100" value="85" data-tip="調整官網導覽圖的透明度，往左變透明可以看到底下的街道。">
+    <button id="btnFac" class="on" data-tip="顯示或隱藏廁所、餐飲、哺乳室等設施圖示。">🚻 設施</button>
+    <button id="btnZoo" data-tip="地圖縮放回整個動物園範圍。">看全園</button>
+  </div>
+  <p id="gps" data-tip="定位狀態。">還沒開啟定位。按「開啟我的定位」，手機會問要不要允許，選允許。</p>
+
+  <h2 data-tip="今天的開放時間、各館休館日與倒數時間。">今日注意</h2>
+  <div id="today" class="card"></div>
+
+  <h2 data-tip="用關鍵字找館舍、動物、廁所、餐廳、遊客列車站。有開定位就依距離由近到遠排序。">搜尋</h2>
+  <label for="q" class="sub" style="display:block;margin:0 0 4px">館名、動物、廁所、哺乳室、餐廳、列車站…</label>
+  <input id="q" type="search" placeholder="例如：熊貓、企鵝、廁所、哺乳室、吃飯" autocomplete="off" enterkeyhint="search" data-tip="輸入館名或常用說法，例如：熊貓、貓熊、企鵝、無尾熊、廁所、尿布台、餐廳。">
+  <ul id="res"></ul>
+
+  <h2 data-tip="停車場即時剩餘車位，資料來自臺北市停管處，約每分鐘更新。">停車場即時空位</h2>
+  <div id="park" class="card" data-tip="木柵機廠、動物園站、堤外三處的剩餘車位。">載入中…</div>
+
+  <h2 data-tip="依官網建議的孩童同遊路線與遊客列車改編，點每一站地圖會移過去。">建議路線（2 歲・下午出發）</h2>
+  <div class="bar">
+    <button id="rB" class="on" data-tip="先看大貓熊／無尾熊（離入口近、平路），再搭遊客列車上山，從企鵝館一路往下走回來，不走回頭上坡路。">B 搭車上山往下走</button>
+    <button id="rA" data-tip="全程只走入口附近的平坦區域，不上山，累了隨時可以出園。">A 平路輕鬆版</button>
+  </div>
+  <ol id="plan"></ol>
+  <p class="note">資料來源：臺北市立動物園官網 zoo.gov.taipei（開放時間、公休表、遊客列車、建議行程、餐飲、導覽圖）、OpenStreetMap 貢獻者（館舍、廁所、餐廳、列車站座標）、臺北市停管處即時車位。哺乳室位置官網導覽圖只標在服務中心等處，其他館的哺乳室請看現場指標。個別動物的 OSM 點位可能已過時，以現場為準。園內後段為山坡，推車上坡很吃力。<a href="https://www.zoo.gov.taipei/" target="_blank" rel="noopener">官網</a></p>
+</div>
+<div id="tip" class="tip"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+const BOUNDS=[[24.987359,121.57478],[25.005527,121.595102]];
+// 座標：OSM（館舍/餐廳/廁所/列車站）；cat 為搜尋分類
+const POI=[
+["新光特展館（大貓熊館）","館舍",24.99737,121.58327,"明星大貓熊館，2 樓貓熊餐廳。第 1 個週一公休。"],
+["熱帶雨林室內館（穿山甲館）","館舍",24.99607,121.58307,"室內，2 樓怡客咖啡。第 2 個週一公休。"],
+["企鵝館","館舍",24.99301,121.59084,"溫帶動物區，旁邊有小貓熊店。第 2 個週一公休。"],
+["兩棲爬蟲動物館","館舍",24.9943,121.59004,"室內，下雨好去處。第 3 個週一公休。"],
+["昆蟲館","館舍",24.9964,121.58065,"第 4 個週一公休。"],
+["教育中心","館舍",24.99759,121.58207,"入場 20 元（優待 10 元）。每週一公休。"],
+["無尾熊館","館舍",24.99836,121.58246,"離遊客列車總站與入口很近。"],
+["兒童動物區","動物區",24.99893,121.58235,"近距離看小動物，離入口近、平坦。"],
+["臺灣動物區","動物區",24.99764,121.58062,"黑熊、獼猴、水獺、穿山甲，離入口近。"],
+["蟲蟲探索谷","遊戲區",24.9945,121.58075,"官網導覽圖標示的親子遊戲區。"],
+["鳥園","動物區",24.99534,121.59006,"紅鶴、鶴等，靠鳥園車站。"],
+["鸚鵡屋","動物區",24.99528,121.59121,""],
+["丹頂鶴","動物區",24.99514,121.59089,""],
+["溫帶動物區","動物區",24.99263,121.58981,"小貓熊、美洲野牛、灰狼等（OSM 點位）。"],
+["非洲動物區","動物區",24.99436,121.58756,"河馬、長頸鹿、獅子、斑馬。"],
+["河馬","動物",24.99493,121.58779,"河馬浴場旁有河馬教室。"],
+["長頸鹿","動物",24.99428,121.58628,"OSM 點位，可能有誤差。"],
+["獅子","動物",24.99458,121.58714,"OSM 點位，可能有誤差。"],
+["亞洲象","動物",24.99392,121.58298,"OSM 點位，官網導覽圖畫在非洲區旁，位置以現場為準。"],
+["孟加拉虎","動物",24.99404,121.58342,"OSM 點位，旁邊老虎店。"],
+["小貓熊","動物",24.99238,121.58914,"OSM 點位，溫帶動物區。"],
+["國王企鵝","動物",24.9931,121.59075,"企鵝館。"],
+["沙漠動物區","動物區",24.99506,121.58541,"駱駝等。"],
+["澳洲動物區","動物區",24.99451,121.58552,"導覽圖標示部分區域因施工封閉，以現場公告為準。"],
+["熱帶雨林區","動物區",24.99538,121.58304,"猩猩、長臂猿、馬來貘等，山坡。"],
+["水生植物園","景點",24.99522,121.58423,""],
+["遊客服務中心","服務",24.99829,121.58106,"大門。官網標示有哺乳集乳室、護理站、輪椅/娃娃車租借、寄物櫃、播音服務。"],
+["哺乳室（服務中心）","哺乳室",24.99829,121.58106,"官網導覽圖標示服務中心有哺乳集乳室。其他位置請看園內指標。"],
+["輪椅／娃娃車租借","服務",24.99825,121.58112,"手推輪椅免費需押證件（09:00–16:00），遊客服務中心旁、鳥園車站可借。"],
+["收票口","出入口",24.99799,121.58258,"OSM 標示。"],
+["捷運動物園站","出入口",24.99813,121.57953,"文湖線。出站過馬路即大門。"],
+["遊客列車總站","遊園車站",24.99792,121.58274,"遊客列車（遊園車）起點。車資 5 元，首班 09:00、末班 16:30。與動物園南站無直達，要在鳥園站轉車。"],
+["遊客列車鳥園站","遊園車站",24.99488,121.58915,"末班往總站 17:00、往動物園南站 16:40。可借手推輪椅。"],
+["遊客列車動物園南站","遊園車站",24.98998,121.58729,"首班 09:00、末班 16:00。貓空纜車動物園南站旁；離木柵機廠停車場最近的出口方向（路線請導航確認）。"],
+["貓空纜車動物園南站","纜車站",24.9902,121.58735,"貓纜維修日動物園南站可能暫停。"],
+["貓空纜車動物園站","纜車站",24.99603,121.57635,"園外，近捷運站。"],
+["統一超商（大門）","餐廳",24.9982,121.58112,"簡易餐點、飲料、ATM，素食。"],
+["麥當勞","餐廳",24.99866,121.58181,"大門出口旁。"],
+["大貓熊咖啡輕食館","餐廳",24.99807,121.58114,"OSM 標示。"],
+["貓熊餐廳","餐廳",24.99745,121.58327,"大貓熊館 2 樓：麵食、披薩、下午茶。"],
+["怡客咖啡","餐廳",24.99612,121.58305,"穿山甲館 2 樓：霜淇淋、個人 pizza。"],
+["老虎店","餐廳",24.99425,121.58346,"熱帶雨林區出口：刈包、輕食、冰品。"],
+["摩斯漢堡","餐廳",24.99535,121.58701,"非洲區。"],
+["石尚河馬店","餐廳",24.99535,121.5871,"非洲區。"],
+["駱駝店／Cinco De Mayo","餐廳",24.99541,121.58569,"沙漠動物區。"],
+["青蛙廚坊／瓦非屋","餐廳",24.99393,121.58994,"鳥園／兩棲爬蟲館附近。"],
+["小貓熊店／萊爾富","餐廳",24.99238,121.59072,"企鵝館旁。"],
+["廁所","廁所",24.99446,121.58346,"老虎店旁。"],
+["廁所","廁所",24.99651,121.58061,"昆蟲館旁。"],
+["廁所","廁所",24.99208,121.58883,"溫帶動物區。"],
+["廁所","廁所",24.99542,121.58578,"沙漠動物區。"],
+["廁所","廁所",24.99598,121.58303,"穿山甲館旁。"],
+["廁所","廁所",24.9965,121.58288,"穿山甲館／熊貓館之間。"],
+["廁所","廁所",24.99532,121.58764,"非洲區。"],
+["廁所","廁所",24.99535,121.5873,"非洲區河馬店旁。"]
+];
+const ALIAS={'熊貓':'大貓熊','貓熊':'大貓熊','團團':'大貓熊','圓圓':'大貓熊','洗手間':'廁所','化妝室':'廁所','尿布':'哺乳室','尿布台':'哺乳室','餵奶':'哺乳室','集乳':'哺乳室','吃飯':'餐廳','吃':'餐廳','咖啡':'餐廳','便當':'餐廳 統一超商','遊園車':'遊客列車','小火車':'遊客列車','火車':'遊客列車','接駁':'遊客列車','纜車':'貓空纜車','貓纜':'貓空纜車','樹熊':'無尾熊','穿山甲':'穿山甲館','兒童':'兒童動物區','夜行館':'穿山甲館 熱帶雨林室內館','沙漠':'沙漠動物區','非洲':'非洲動物區 河馬 長頸鹿 獅子','大象':'亞洲象','老虎':'孟加拉虎','猩猩':'熱帶雨林區','鳥':'鳥園 鸚鵡屋 丹頂鶴','兩棲':'兩棲爬蟲動物館','爬蟲':'兩棲爬蟲動物館','蛇':'兩棲爬蟲動物館','烏龜':'兩棲爬蟲動物館','企鵝':'企鵝館 國王企鵝','入口':'遊客服務中心 收票口','捷運':'捷運動物園站','停車':'捷運動物園站'};
+const ICON={"廁所":"🚻","餐廳":"🍴","哺乳室":"🍼","遊園車站":"🚂","纜車站":"🚠","館舍":"🏛️","服務":"ℹ️","出入口":"🚪"};
+const STEPS_B=[
+{t:'14:30',n:'遊客服務中心（大門）',p:[24.99829,121.58106],d:'上廁所、換尿布、哺乳室，需要可借手推車（免費，須押證件）。確認推車與水壺帶好。'},
+{t:'14:45',n:'無尾熊館',p:[24.99836,121.58246],d:'離入口最近的平路，先看。動物展示 16:30 結束，大熊貓與無尾熊先排前面。'},
+{t:'15:05',n:'新光特展館（大貓熊館）',p:[24.99737,121.58327],d:'室內有冷氣，2 樓貓熊餐廳可補給。今天週日全開，明天（第 2 個週一）熊貓館照常。'},
+{t:'15:35',n:'遊客列車總站 → 鳥園站',p:[24.99792,121.58274],d:'搭遊客列車（5 元）上山，不用推車爬坡；推車可上車與否請問站務。鳥園站末班往總站 17:00。',warn:1},
+{t:'15:55',n:'兩棲爬蟲動物館',p:[24.9943,121.59004],d:'室內，小朋友愛看蛇龜蛙。鳥園站走過去約 150 公尺。'},
+{t:'16:15',n:'企鵝館・小貓熊（溫帶動物區）',p:[24.99301,121.59084],d:'今天（週日）企鵝館有開；明天第 2 個週一公休。這裡是最高點，之後一路往下。'},
+{t:'16:40',n:'非洲動物區（河馬・長頸鹿）→ 往下走',p:[24.99493,121.58779],d:'官網建議「沿路往下」非洲區→熱帶雨林→穿山甲館。16:30 後動物展示陸續結束、17:00 閉園，來不及就回鳥園站搭末班車（往總站 17:00）。',warn:1},
+{t:'17:00',n:'閉園：回遊客列車總站／大門',p:[24.99792,121.58274],d:'走不動就搭車回總站。停車場請看上方即時空位。'}
+];
+const STEPS_A=[
+{t:'14:30',n:'遊客服務中心（大門）',p:[24.99829,121.58106],d:'上廁所、換尿布，借手推車。'},
+{t:'14:40',n:'臺灣動物區',p:[24.99764,121.58062],d:'黑熊、獼猴、水獺，離入口近。'},
+{t:'15:10',n:'教育中心 → 昆蟲館（今天週日有開）',p:[24.99759,121.58207],d:'教育中心入場 20 元。昆蟲館在附近。'},
+{t:'15:40',n:'穿山甲館（熱帶雨林室內館）',p:[24.99607,121.58307],d:'室內，2 樓怡客咖啡。稍有坡度。'},
+{t:'16:05',n:'新光特展館（大貓熊館）',p:[24.99737,121.58327],d:'動物展示 16:30 結束，記得在這之前看完。'},
+{t:'16:30',n:'無尾熊館 → 兒童動物區',p:[24.99836,121.58246],d:'平路，接近出口，閉園前慢慢逛。17:00 閉園。'}
+];
+const map=L.map('map',{maxZoom:20}).fitBounds([[24.9895,121.5795],[24.9995,121.5925]]);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:20,maxNativeZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
+const ov=L.imageOverlay('zoo_map.png',BOUNDS,{opacity:.85}).addTo(map);
+function hav(a,b){const R=6371000,r=Math.PI/180,dl=(b[0]-a[0])*r,dn=(b[1]-a[1])*r;const x=Math.sin(dl/2)**2+Math.cos(a[0]*r)*Math.cos(b[0]*r)*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(x));}
+const walk=(a,b)=>{const m=hav(a,b)*1.4;return{m:Math.round(m/10)*10,min:Math.max(1,Math.round(m/50))};};
+const inZoo=p=>p[0]>24.986&&p[0]<25.003&&p[1]>121.574&&p[1]<121.596;
+let me=null,acc=null,follow=false,watch=null,last=null;
+// 設施點
+const facLayer=L.layerGroup().addTo(map);
+POI.forEach(it=>{const ic=ICON[it[1]];if(!ic||it[1]==='館舍'||it[1]==='服務')return;
+ L.marker([it[2],it[3]],{icon:L.divIcon({className:'fac',html:ic,iconSize:[20,20]})}).bindPopup(`<b>${it[0]}</b><br>${it[4]||it[1]}`).addTo(facLayer);});
+POI.filter(it=>it[1]==='館舍'||it[1]==='服務').forEach(it=>L.marker([it[2],it[3]],{icon:L.divIcon({className:'fac',html:'📍',iconSize:[20,20]})}).bindPopup(`<b>${it[0]}</b><br>${it[4]}`).addTo(facLayer));
+// 路線
+let routeLayer=L.layerGroup().addTo(map);
+function drawRoute(steps){
+ routeLayer.clearLayers();
+ L.polyline(steps.map(s=>s.p),{color:'#c2410c',weight:4,opacity:.7,dashArray:'6 8'}).addTo(routeLayer);
+ steps.forEach((s,i)=>L.marker(s.p,{icon:L.divIcon({className:'',html:`<div class="pin">${i+1}</div>`,iconSize:[26,26],iconAnchor:[13,13]})}).bindPopup(`<b>${s.t} ${s.n}</b><br>${s.d}`).addTo(routeLayer));
+ const ol=document.getElementById('plan');ol.innerHTML='';
+ steps.forEach((s,i)=>{const li=document.createElement('li');if(s.warn)li.className='warn';li.dataset.tip='點一下，地圖會移到這一站。';
+  let w='';if(i>0){const x=walk(steps[i-1].p,s.p);w=`從上一站直線距離估約 ${x.m} 公尺，約 ${x.min} 分鐘`;}
+  li.innerHTML=`<span class="t">${s.t}</span><span class="n">${i+1}. ${s.n}</span><span class="d">${s.d}</span>${w?`<span class="w">${w}</span>`:''}<span class="w me" data-i="${i}"></span>`;
+  li.onclick=()=>{map.setView(s.p,18);};ol.appendChild(li);});
+ CUR=steps;refreshMe();
+}
+let CUR=STEPS_B;
+function refreshMe(){document.querySelectorAll('.me').forEach(el=>{const s=CUR[+el.dataset.i];if(!last||!inZoo(last)){el.textContent='';return;}const x=walk(last,s.p);el.textContent=`從你現在的位置：約 ${x.m} 公尺，約 ${x.min} 分鐘`;});}
+drawRoute(STEPS_B);
+rB.onclick=()=>{rB.classList.add('on');rA.classList.remove('on');drawRoute(STEPS_B);};
+rA.onclick=()=>{rA.classList.add('on');rB.classList.remove('on');drawRoute(STEPS_A);};
+// 定位
+const gpsEl=document.getElementById('gps');
+function onPos(pos){const p=[pos.coords.latitude,pos.coords.longitude];last=p;
+ if(!me){me=L.circleMarker(p,{radius:9,color:'#fff',weight:3,fillColor:'#2563eb',fillOpacity:1}).addTo(map);acc=L.circle(p,{radius:pos.coords.accuracy,color:'#2563eb',weight:1,fillOpacity:.12}).addTo(map);if(inZoo(p))map.setView(p,18);}
+ me.setLatLng(p);acc.setLatLng(p).setRadius(pos.coords.accuracy);if(follow)map.panTo(p);
+ const t=new Date().toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'});
+ gpsEl.textContent=inZoo(p)?`📍 已定位（${t}，誤差約 ${Math.round(pos.coords.accuracy)} 公尺）。每一站與搜尋結果會顯示從你這裡走過去的時間。`:`📍 已定位，但你還不在動物園附近（${t}）。`;refreshMe();search();}
+function onErr(e){gpsEl.textContent=e.code===1?'定位被拒絕了。到手機設定→Safari／Chrome→位置，改成允許，再重新整理。':'暫時抓不到定位（'+e.message+'），到空曠處再試一次。';}
+btnGps.onclick=function(){if(!navigator.geolocation){gpsEl.textContent='這個瀏覽器不支援定位。';return;}
+ if(watch!==null){navigator.geolocation.clearWatch(watch);watch=null;this.classList.remove('on');this.textContent='📍 開啟我的定位';return;}
+ gpsEl.textContent='定位中…';watch=navigator.geolocation.watchPosition(onPos,onErr,{enableHighAccuracy:true,maximumAge:5000,timeout:20000});this.classList.add('on');this.textContent='📍 定位中（按一下關閉）';};
+btnFollow.onclick=function(){follow=!follow;this.classList.toggle('on',follow);if(follow&&last)map.panTo(last);};
+btnMap.onclick=function(){const on=map.hasLayer(ov);on?map.removeLayer(ov):ov.addTo(map);this.classList.toggle('on',!on);};
+op.oninput=()=>ov.setOpacity(op.value/100);
+btnFac.onclick=function(){const on=map.hasLayer(facLayer);on?map.removeLayer(facLayer):facLayer.addTo(map);this.classList.toggle('on',!on);};
+btnZoo.onclick=()=>map.fitBounds([[24.9895,121.5795],[24.9995,121.5925]]);
+// 搜尋
+const norm=t=>t.toLowerCase().replace(/臺/g,'台').replace(/\s+/g,'');
+const ALL=POI.map(([n,c,la,ln,d])=>({n,c,d,p:[la,ln]}));
+const resEl=document.getElementById('res'),qEl=document.getElementById('q');let hitMk=null;
+function show(it){if(hitMk)map.removeLayer(hitMk);
+ hitMk=L.marker(it.p,{icon:L.divIcon({className:'',html:'<div class="hit">★</div>',iconSize:[30,30],iconAnchor:[15,15]}),zIndexOffset:1000}).addTo(map);
+ let w='';if(last&&inZoo(last)){const x=walk(last,it.p);w=`<br>從你這裡約 ${x.m} 公尺、${x.min} 分鐘`;}
+ hitMk.bindPopup(`<b>${it.n}</b><br>${it.c}${it.d?'<br>'+it.d:''}${w}`).openPopup();map.setView(it.p,18);
+ document.getElementById('map').scrollIntoView({behavior:'smooth',block:'start'});}
+function search(){const q=norm(qEl.value);resEl.innerHTML='';if(!q)return;
+ const keys=[q];for(const[k,v]of Object.entries(ALIAS))if(k.includes(q)||q.includes(k))keys.push(...v.split(' ').map(norm));
+ const seen=new Set(),hits=[];
+ for(const it of ALL){const a=norm(it.n),b=norm(it.c);if(keys.some(k=>a.includes(k)||b.includes(k)||(k.length>1&&k.includes(a)))){const id=it.n+it.p;if(!seen.has(id)){seen.add(id);hits.push(it);}}}
+ if(last&&inZoo(last))hits.sort((x,y)=>hav(last,x.p)-hav(last,y.p));
+ if(!hits.length){resEl.innerHTML='<li class="none">找不到。試試別的字，例如：熊貓、企鵝、廁所、餐廳。</li>';return;}
+ hits.slice(0,12).forEach(it=>{const li=document.createElement('li');li.dataset.tip='點一下，地圖會移到這裡並標星號。';let d=it.c;if(last&&inZoo(last)){const x=walk(last,it.p);d=`${it.c}・${x.m} 公尺・${x.min} 分`;}
+  li.innerHTML=`<span>${it.n}</span><span class="c">${d}</span>`;li.onclick=()=>show(it);resEl.appendChild(li);});}
+qEl.addEventListener('input',search);
+qEl.addEventListener('keydown',e=>{if(e.key==='Enter'){const f=resEl.querySelector('li:not(.none)');if(f){f.click();qEl.blur();}}});
+// 今日注意
+function today(){const n=new Date(),dow=n.getDay(),wk=Math.ceil(n.getDate()/7),W='日一二三四五六'[dow];
+ const SH={1:'大貓熊館',2:'熱帶雨林室內館（穿山甲館）與企鵝館',3:'兩棲爬蟲動物館',4:'昆蟲館'};
+ const closedToday=dow===1?[SH[wk]||'（第 5 個週一無館休）','教育中心','酷cool節能屋'].join('、'):'';
+ const tm=new Date(n.getTime()+(dow===0?1:(8-dow)%7||7)*864e5);const wk2=Math.ceil(tm.getDate()/7);
+ const hm=n.getHours()*60+n.getMinutes(),left=m=>{const d=m-hm;return d>0?`還有 ${Math.floor(d/60)} 小時 ${d%60} 分`:'已過';};
+ let h=`<b>今天 ${n.getMonth()+1}/${n.getDate()}（週${W}）</b>：`;
+ h+=dow===1?`<b class="bad">今天週一，公休：${closedToday}</b>`:`<b class="good">各館今天都開（館休只在週一）</b>`;
+ h+=`<br>下一個週一（${tm.getMonth()+1}/${tm.getDate()}）公休：${[SH[wk2]||'無館休（第 5 個週一）','教育中心','酷cool節能屋'].join('、')}。連假週一全園開放、館休順延。`;
+ h+=`<br>園區 09:00–17:00（${left(17*60)}）・<b>停止入園 16:00</b>（${left(16*60)}）・動物展示至 16:30（${left(16*60+30)}）。`;
+ h+=`<br>遊客列車 5 元：總站末班 16:30、鳥園站往總站 17:00／往南站 16:40、南站末班 16:00。總站與南站無直達，鳥園站轉車。`;
+ h+=`<br>官網導覽圖標示澳洲動物區部分範圍施工封閉。下雨與颱風停班日請看官網公告。`;
+ document.getElementById('today').innerHTML=h;}
+today();setInterval(today,60000);
+// 停車
+fetch('https://tcgbusfs.blob.core.windows.net/blobtcmsv/TCMSV_allavailable.json').then(r=>r.json()).then(d=>{
+ const N={TPE0139:'捷運木柵機廠停車場',TPE0739:'動物園站地下停車場',TPE0005:'堤外（河川地）停車場'};
+ const rows=d.data.park.filter(p=>N[p.id]).map(p=>`${N[p.id]}：<b>${p.availablecar<0?'無資料':p.availablecar+' 位'}</b>${p.availablehandicap>0?`（身障 ${p.availablehandicap}）`:''}`);
+ document.getElementById('park').innerHTML=rows.join('<br>')+`<br><span class="sub">更新於 ${new Date().toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'})}。機廠停車場 0 位代表目前滿了。</span>`;
+}).catch(()=>{document.getElementById('park').innerHTML='抓不到即時資料。<a href="https://pma.gov.taipei/" target="_blank" rel="noopener">停管處查詢</a>。';});
+// tooltip（hover／focus／手機點擊；position:fixed 不被截斷）
+const tip=document.getElementById('tip');let tipEl=null;
+function showTip(el){const t=el.dataset.tip;if(!t){return;}tip.textContent=t;tip.style.display='block';const r=el.getBoundingClientRect(),w=tip.offsetWidth,h=tip.offsetHeight;
+ let x=Math.min(Math.max(8,r.left),innerWidth-w-8),y=r.top-h-8;if(y<8)y=r.bottom+8;tip.style.left=x+'px';tip.style.top=y+'px';tipEl=el;}
+const hideTip=()=>{tip.style.display='none';tipEl=null;};
+document.addEventListener('mouseover',e=>{const el=e.target.closest('[data-tip]');el?showTip(el):hideTip();});
+document.addEventListener('focusin',e=>{const el=e.target.closest('[data-tip]');el&&showTip(el);});
+document.addEventListener('click',e=>{const el=e.target.closest('[data-tip]');if(el){showTip(el);clearTimeout(window._tt);window._tt=setTimeout(hideTip,3500);}else hideTip();},true);
+document.addEventListener('touchstart',e=>{if(!e.target.closest('[data-tip]'))hideTip();},{passive:true});
+</script>
+</body>
+</html>
