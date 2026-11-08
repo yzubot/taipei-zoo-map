@@ -47,6 +47,7 @@ a{color:var(--me)}
   <div class="bar">
     <button id="btnGps" data-tip="開啟手機定位，地圖上會出現藍點，每個地點會顯示從你這裡走過去要多久。需要允許瀏覽器使用位置。">📍 開啟我的定位</button>
     <button id="btnFollow" data-tip="開啟後地圖會跟著你的藍點移動。">跟著我移動</button>
+    <button id="btnHead" data-tip="開啟後地圖會依手機朝向自動轉，你面對的方向永遠朝上（第一次要允許「動作與方向」權限）。也可以直接用兩指旋轉地圖。再按一次轉回北方朝上。">🧭 跟著方向轉</button>
     <button id="btnMap" class="on" data-tip="顯示或隱藏官網遊園導覽圖（疊在街道地圖上）。對位是用 12 個館舍控制點估算，離真實位置可能差 30–70 公尺，要走路請以現場指標為準。">🗺️ 官網導覽圖</button>
     <input id="op" type="range" min="20" max="100" value="85" data-tip="調整官網導覽圖的透明度，往左變透明可以看到底下的街道。">
     <button id="btnFac" class="on" data-tip="顯示或隱藏廁所、餐飲、哺乳室等設施圖示。">🚻 設施</button>
@@ -75,6 +76,7 @@ a{color:var(--me)}
 </div>
 <div id="tip" class="tip"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate-src.js"></script>
 <script>
 const BOUNDS=[[24.987359,121.57478],[25.005527,121.595102]];
 // 座標：OSM（館舍/餐廳/廁所/列車站）；cat 為搜尋分類
@@ -155,7 +157,7 @@ const STEPS_A=[
 {t:'16:05',n:'新光特展館（大貓熊館）',p:[24.99737,121.58327],d:'動物展示 16:30 結束，記得在這之前看完。'},
 {t:'16:30',n:'無尾熊館 → 兒童動物區',p:[24.99836,121.58246],d:'平路，接近出口，閉園前慢慢逛。17:00 閉園。'}
 ];
-const map=L.map('map',{maxZoom:20}).fitBounds([[24.9895,121.5795],[24.9995,121.5925]]);
+const map=L.map('map',{maxZoom:20,rotate:true,touchRotate:true,rotateControl:{closeOnZeroBearing:false,position:'bottomright'},bearing:0}).fitBounds([[24.9895,121.5795],[24.9995,121.5925]]);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:20,maxNativeZoom:19,attribution:'© OpenStreetMap'}).addTo(map);
 const ov=L.imageOverlay('zoo_map.png',BOUNDS,{opacity:.85}).addTo(map);
 function hav(a,b){const R=6371000,r=Math.PI/180,dl=(b[0]-a[0])*r,dn=(b[1]-a[1])*r;const x=Math.sin(dl/2)**2+Math.cos(a[0]*r)*Math.cos(b[0]*r)*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(x));}
@@ -197,6 +199,16 @@ btnGps.onclick=function(){if(!navigator.geolocation){gpsEl.textContent='這個�
  if(watch!==null){navigator.geolocation.clearWatch(watch);watch=null;this.classList.remove('on');this.textContent='📍 開啟我的定位';return;}
  gpsEl.textContent='定位中…';watch=navigator.geolocation.watchPosition(onPos,onErr,{enableHighAccuracy:true,maximumAge:5000,timeout:20000});this.classList.add('on');this.textContent='📍 定位中（按一下關閉）';};
 btnFollow.onclick=function(){follow=!follow;this.classList.toggle('on',follow);if(follow&&last)map.panTo(last);};
+// 跟著手機方向轉（2026-11-08 使用者在園區要求）
+let headOn=false;
+function onOri(e){let h=(e.webkitCompassHeading!=null)?e.webkitCompassHeading:(e.absolute&&e.alpha!=null?360-e.alpha:null);if(h==null)return;const so=(screen.orientation&&screen.orientation.angle)||window.orientation||0;map.setBearing(-(h+so));}
+btnHead.onclick=async function(){
+  headOn=!headOn;this.classList.toggle('on',headOn);
+  if(headOn){
+    try{if(typeof DeviceOrientationEvent!=='undefined'&&DeviceOrientationEvent.requestPermission){const r=await DeviceOrientationEvent.requestPermission();if(r!=='granted'){alert('沒有方向權限，只能用兩指手動旋轉');headOn=false;this.classList.remove('on');return;}}}catch(err){}
+    window.addEventListener('deviceorientationabsolute',onOri);window.addEventListener('deviceorientation',onOri);
+  }else{window.removeEventListener('deviceorientationabsolute',onOri);window.removeEventListener('deviceorientation',onOri);map.setBearing(0);}
+};
 btnMap.onclick=function(){const on=map.hasLayer(ov);on?map.removeLayer(ov):ov.addTo(map);this.classList.toggle('on',!on);};
 op.oninput=()=>ov.setOpacity(op.value/100);
 btnFac.onclick=function(){const on=map.hasLayer(facLayer);on?map.removeLayer(facLayer):facLayer.addTo(map);this.classList.toggle('on',!on);};
